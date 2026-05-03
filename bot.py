@@ -5,20 +5,27 @@ from aiogram.utils import executor
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import yt_dlp
 import os
+from aiohttp import web
 
 # Bot tokeningiz
 API_TOKEN = '8508472995:AAGO683iLtW5cifOXar8xx9hcn-jCVwoTZM'
 
 logging.basicConfig(level=logging.INFO)
-
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# Matnlar va tillar
+# Render uchun kichik veb-server (bepul reja o'chib qolmasligi uchun)
+async def handle(request):
+    return web.Response(text="Bot is running!")
+
+app = web.Application()
+app.router.add_get("/", handle)
+
+# Matnlar lug'ati (Siz so'ragandek barcha tillarda)
 texts = {
     'uz': {
-        'ask_link': "Iltimos, menga Instagram havolasini yuboring. Men sizga videoni taqdim etaman. ✨",
-        'error': "Kechirasiz, siz bergan link xato! ❌",
+        'ask_link': "Iltimos, menga Instagram havolasini yuboring. Men sizga videosini taqdim etaman. ✨",
+        'error': "Kechirasiz, siz bergan link xato yoki video topilmadi. ❌",
         'wait': "Iltimos, kuting... 🔄",
         'music_btn': "🎵 Video musiqasi"
     },
@@ -49,11 +56,7 @@ def get_lang_keyboard():
 
 @dp.message_handler(commands=['start'])
 async def send_welcome(message: types.Message):
-    welcome_text = (
-        "Assalomu alaykum! 👋\n\n"
-        "Ushbu bot orqali Instagram videolarini va ularning musiqalarini yuklab olishingiz mumkin. 📥\n\n"
-        "Iltimos, tilni tanlang: 👇"
-    )
+    welcome_text = "Assalomu alaykum! 👋\n\nUshbu bot orqali Instagram videolarini yuklab olishingiz mumkin. 📥\n\nIltimos, tilni tanlang: 👇"
     await message.answer(welcome_text, reply_markup=get_lang_keyboard())
 
 @dp.callback_query_handler(lambda c: c.data.startswith('lang_'))
@@ -67,31 +70,25 @@ async def process_language(callback_query: types.CallbackQuery):
 async def handle_video(message: types.Message):
     lang = user_lang.get(message.from_user.id, 'uz')
     url = message.text
-
     if "instagram.com" not in url:
         await message.reply(texts[lang]['error'])
         return
-
+    
     wait_msg = await message.answer(texts[lang]['wait'])
-
     try:
-        ydl_opts = {
-            'format': 'best',
-            'quiet': True,
-            'no_warnings': True,
-        }
+        ydl_opts = {'format': 'best', 'quiet': True}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             video_url = info.get('url')
-            
-            keyboard = InlineKeyboardMarkup()
-            music_btn = InlineKeyboardButton(texts[lang]['music_btn'], callback_data=f"music_{url}")
-            keyboard.add(music_btn)
-
+            keyboard = InlineKeyboardMarkup().add(InlineKeyboardButton(texts[lang]['music_btn'], callback_data=f"music_{url}"))
             await bot.send_video(message.chat.id, video_url, reply_markup=keyboard)
             await wait_msg.delete()
-    except Exception:
+    except:
         await wait_msg.edit_text(texts[lang]['error'])
 
+# Serverni bot bilan birga ishga tushirish
 if __name__ == '__main__':
-    executor.start_polling(dp, skip_updates=True)
+    port = int(os.environ.get("PORT", 8080))
+    loop = asyncio.get_event_loop()
+    loop.create_task(executor.start_polling(dp, skip_updates=True))
+    web.run_app(app, port=port)

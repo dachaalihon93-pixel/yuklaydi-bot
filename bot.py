@@ -1,43 +1,32 @@
 import logging
-import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.utils import executor
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import yt_dlp
 import os
-from aiohttp import web
 
-# Bot tokeningiz
 API_TOKEN = '8508472995:AAGO683iLtW5cifOXar8xx9hcn-jCVwoTZM'
 
 logging.basicConfig(level=logging.INFO)
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
-# Render uchun kichik veb-server (bepul reja o'chib qolmasligi uchun)
-async def handle(request):
-    return web.Response(text="Bot is running!")
-
-app = web.Application()
-app.router.add_get("/", handle)
-
-# Matnlar lug'ati (Siz so'ragandek barcha tillarda)
 texts = {
     'uz': {
-        'ask_link': "Iltimos, menga Instagram havolasini yuboring. Men sizga videosini taqdim etaman. ✨",
-        'error': "Kechirasiz, siz bergan link xato yoki video topilmadi. ❌",
+        'ask_link': "Iltimos, menga Instagram havolasini yuboring. ✨",
+        'error': "Kechirasiz, xatolik yuz berdi. ❌",
         'wait': "Iltimos, kuting... 🔄",
         'music_btn': "🎵 Video musiqasi"
     },
     'ru': {
-        'ask_link': "Пожалуйста, отправьте мне ссылку на Instagram. Я пришлю вам видео. ✨",
-        'error': "Извините, предоставленная вами ссылка неверна! ❌",
+        'ask_link': "Пожалуйста, отправьте ссылку на Instagram. ✨",
+        'error': "Произошла ошибка. ❌",
         'wait': "Пожалуйста, подождите... 🔄",
         'music_btn': "🎵 Музыка из видео"
     },
     'en': {
-        'ask_link': "Please send me an Instagram link. I will provide the video for you. ✨",
-        'error': "Sorry, the link you provided is incorrect! ❌",
+        'ask_link': "Please send an Instagram link. ✨",
+        'error': "An error occurred. ❌",
         'wait': "Please wait... 🔄",
         'music_btn': "🎵 Video music"
     }
@@ -45,25 +34,20 @@ texts = {
 
 user_lang = {}
 
-def get_lang_keyboard():
+@dp.message_handler(commands=['start'])
+async def send_welcome(message: types.Message):
     keyboard = InlineKeyboardMarkup(row_width=1)
     keyboard.add(
         InlineKeyboardButton("🇺🇿 O'zbek tili", callback_data='lang_uz'),
         InlineKeyboardButton("🇷🇺 Русский язык", callback_data='lang_ru'),
         InlineKeyboardButton("🇺🇸 English", callback_data='lang_en')
     )
-    return keyboard
-
-@dp.message_handler(commands=['start'])
-async def send_welcome(message: types.Message):
-    welcome_text = "Assalomu alaykum! 👋\n\nUshbu bot orqali Instagram videolarini yuklab olishingiz mumkin. 📥\n\nIltimos, tilni tanlang: 👇"
-    await message.answer(welcome_text, reply_markup=get_lang_keyboard())
+    await message.answer("Assalomu alaykum! 👋\nTilni tanlang:", reply_markup=keyboard)
 
 @dp.callback_query_handler(lambda c: c.data.startswith('lang_'))
 async def process_language(callback_query: types.CallbackQuery):
     lang = callback_query.data.split('_')[1]
     user_lang[callback_query.from_user.id] = lang
-    await bot.answer_callback_query(callback_query.id)
     await bot.send_message(callback_query.from_user.id, texts[lang]['ask_link'])
 
 @dp.message_handler()
@@ -76,19 +60,14 @@ async def handle_video(message: types.Message):
     
     wait_msg = await message.answer(texts[lang]['wait'])
     try:
-        ydl_opts = {'format': 'best', 'quiet': True}
+        ydl_opts = {'format': 'best', 'quiet': True, 'no_warnings': True}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             video_url = info.get('url')
-            keyboard = InlineKeyboardMarkup().add(InlineKeyboardButton(texts[lang]['music_btn'], callback_data=f"music_{url}"))
-            await bot.send_video(message.chat.id, video_url, reply_markup=keyboard)
+            await bot.send_video(message.chat.id, video_url)
             await wait_msg.delete()
     except:
         await wait_msg.edit_text(texts[lang]['error'])
 
-# Serverni bot bilan birga ishga tushirish
 if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 8080))
-    loop = asyncio.get_event_loop()
-    loop.create_task(executor.start_polling(dp, skip_updates=True))
-    web.run_app(app, port=port)
+    executor.start_polling(dp, skip_updates=True)
